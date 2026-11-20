@@ -1,12 +1,12 @@
 const http=require('node:http'), fs=require('node:fs'), WebSocket=require('ws');
-const durations=[5,10,20,30,35,40,45], initial=100000, stake=100, payout=.92;
+const durations=[5,10,30], initial=100000, stake=100, payout=.92;
 function outcome(side,entry,exit,amount=stake){return exit===entry?0:((side==='UP')===(exit>entry)?Math.round(amount*payout*100)/100:-amount)}
 function signal(a){if(a.length<60)return 'WAIT';const ema=(n)=>a.reduce((v,p)=>v+(p-v)*2/(n+1),a[0]);let up=0,down=0;for(let i=a.length-14;i<a.length;i++){let d=a[i]-a[i-1];up+=Math.max(0,d);down+=Math.max(0,-d)}const r=up+down?100*up/(up+down):50;const fast=ema(8),slow=ema(21),macd=ema(12)-ema(26);return fast>slow&&macd>0&&r>52&&r<75?'UP':fast<slow&&macd<0&&r<48&&r>25?'DOWN':'WAIT'}
 module.exports={outcome,signal};
 if(require.main===module){
 const file=process.env.DATA_FILE||'state-v2.json';let books=Object.fromEntries(durations.map(d=>[d,{balance:initial,peak:initial,dd:0,closed:0,wins:0,losses:0,voids:0,net:0,open:null,day:'',daily:0}]));
 let flow=[],depth=null,journal=[],ticks=[],price=null,last=0,lastId=null,connected=false,auto=true,candles=[],current=null,started=Date.now(),status='connecting';
-try{const s=JSON.parse(fs.readFileSync(file));books=s.books;journal=s.journal;for(const b of Object.values(books)){if(b.open){journal.push({...b.open,result:'VOID',pnl:0,exit:null});b.open=null;b.voids++}}}catch(e){if(e.code!=='ENOENT')throw e}
+try{const s=JSON.parse(fs.readFileSync(file));books=Object.fromEntries(durations.map(d=>[d,s.books[d]||books[d]]));journal=s.journal;for(const b of Object.values(books)){if(b.open){journal.push({...b.open,result:'VOID',pnl:0,exit:null});b.open=null;b.voids++}}}catch(e){if(e.code!=='ENOENT')throw e}
 function save(){fs.writeFileSync(file+'.tmp',JSON.stringify({books,journal}));fs.renameSync(file+'.tmp',file)}
 function fresh(){return connected&&Date.now()-last<3000}
 function voidAll(){for(const b of Object.values(books)){if(b.open){journal.push({...b.open,result:'VOID',pnl:0,exit:null,closedAt:Date.now()});b.open=null;b.voids++}}save()}
