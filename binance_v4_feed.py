@@ -2,12 +2,22 @@
 import json
 import time
 from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from multi_agent_v4 import decide
 
 def get(path, **params):
-    with urlopen("https://api.binance.com/api/v3/"+path+"?"+urlencode(params), timeout=5) as r:
-        return json.load(r)
+    for attempt in range(3):
+        try:
+            with urlopen("https://api.binance.com/api/v3/"+path+"?"+urlencode(params), timeout=5) as r:
+                return json.load(r)
+        except HTTPError as exc:
+            if exc.code not in (500, 502, 503, 504) or attempt == 2:
+                raise
+        except (URLError, TimeoutError):
+            if attempt == 2:
+                raise
+        time.sleep(2**attempt)
 
 def sign(x):
     return int(x>0)-int(x<0)
@@ -34,8 +44,10 @@ def snapshot(fee_bps, slippage_bps, notional=10000, max_positions=5):
             open_positions=0,max_positions=max_positions,drawdown_pct=0)
         result.update(price=float(trades[-1]["p"]),news_status="unavailable",mode="SIGNAL_ONLY")
         return result
+    except HTTPError as exc:
+        return dict(signal="WAIT",mode="SIGNAL_ONLY",reason=str(exc),http_status=exc.code,feed_status="RESTRICTED" if exc.code==451 else "UNAVAILABLE")
     except Exception as exc:
-        return dict(signal="WAIT",mode="SIGNAL_ONLY",reason=str(exc))
+        return dict(signal="WAIT",mode="SIGNAL_ONLY",reason=str(exc),feed_status="UNAVAILABLE")
 
 if __name__=="__main__":
     import argparse
