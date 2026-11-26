@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  checks:
+  offline:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,11 +14,30 @@ jobs:
         with:
           python-version: '3.11'
       - run: python multi_agent_v4.py
+      - name: Restricted feed safety
+        run: |
+          python - <<'PY'
+          from unittest.mock import patch
+          from urllib.error import HTTPError
+          from binance_v4_feed import snapshot
+          with patch("binance_v4_feed.urlopen", side_effect=HTTPError("https://api.binance.com",451,"Restricted",{},None)) as request:
+              result=snapshot(10,2)
+              assert result["signal"]=="WAIT" and result["feed_status"]=="RESTRICTED", result
+              assert request.call_count==1
+          print("Restricted feed safety passed")
+          PY
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Public market data probe
         run: |
           python - <<'PY'
           from binance_v4_feed import snapshot
-          result = snapshot(fee_bps=10, slippage_bps=2)
+          result=snapshot(10,2)
           print(result)
           assert 'price' in result, result
           PY
